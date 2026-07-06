@@ -8,6 +8,7 @@ import {
     pgEnum,
     integer,
     primaryKey,
+    unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
