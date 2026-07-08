@@ -1,5 +1,5 @@
 import {Elysia} from "elysia";
-import {jwt} from "elysia/jwt";
+import {jwt} from "@elysiajs/jwt";
 
 export type JwtUser = {
     id:string,
@@ -16,18 +16,20 @@ export const authPlugin = new Elysia({name:'auth'})
     })
 )
 
-.derive({as:"global"},async({jwt, headers, cookie})=>{
-    const bearer = headers.get('authorization')?.startsWith('Bearer ')
-    ? headers.get('authorization').slice(7) : undefined;
+.derive({ as: "global" }, async ({ jwt, headers, cookie }) => {
+    const authHeader = headers.authorization;
+    const bearer = authHeader?.startsWith('Bearer ')
+        ? authHeader.slice(7)
+        : undefined;
 
     const token = bearer || cookie.auth?.value;
 
-    if(!token) return {user:null as JwtUser | null};
+    if (!token) return { user: null as JwtUser | null };
 
     const payload = await jwt.verify(token);
-    if(!payload) return {user: null as JwtUser | null};
+    if (!payload) return { user: null as JwtUser | null };
 
-    return {user:payload as unknown as JwtUser};
+    return { user: payload as unknown as JwtUser };
 });
 
 

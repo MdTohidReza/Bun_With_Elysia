@@ -1,244 +1,56 @@
+import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import { eq } from "drizzle-orm";
-import Elysia, { t } from "elysia";
-import { db } from "./db";
-import { users } from "./db/schema";
-import { hashPassword, verifyPassword } from "./lib/auth";
+
+import { authController } from "./modules/auth/auth_controller";
+import { usersController } from "./modules/users/user_controller";
+import { categoriesController } from "./modules/categories/categories_controller";
+import { tagsController } from "./modules/tags/tags_controller";
+import { postsController } from "./modules/posts/post_controller";
+import { commentsController } from "./modules/comments/comments_controller";
+
+const PORT = Number(process.env.PORT) || 4000;
+const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:5173").split(",");
 
 const app = new Elysia()
-  .use(cors())
-  .use(swagger())
+  .use(cors({ origin: CORS_ORIGIN, credentials: true }))
+  // Elysia's built-in OpenAPI/Swagger plugin auto-generates interactive API
+  // docs from every route + typebox schema defined below.
+  // Visit http://localhost:4000/docs once the server is running.
   .use(
-    jwt({
-      name: "jwt",
-      secret: process.env.JWT_SECRET || "your-secret-key-change-in-production",
-      exp: 60 * 60 * 24 * 7, // 7 days
+    swagger({
+      path: "/docs",
+      documentation: {
+        info: {
+          title: "BlogApp API",
+          version: "1.0.0",
+          description:
+            "Portfolio project API built with Bun + Elysia + Drizzle ORM + PostgreSQL. " +
+            "Demonstrates JWT auth, role-based access control, and one-to-one, " +
+            "one-to-many and many-to-many database relations.",
+        },
+        tags: [
+          { name: "Auth", description: "Register / login / current user" },
+          { name: "Users", description: "User profiles (1:1) & admin user management" },
+          { name: "Categories", description: "Post categories (1:N with posts)" },
+          { name: "Tags", description: "Post tags (N:N with posts)" },
+          { name: "Posts", description: "Blog posts - the core resource" },
+          { name: "Comments", description: "Comments nested under a post" },
+        ],
+      },
     })
   )
-  // Health check
-  .get("/health", () => ({
-    status: "ok",
-    timestamp: new Date().toISOString(),
+  .get("/", () => ({
+    success: true,
+    message: "BlogApp API is running. See /docs for interactive API documentation.",
   }))
-  // Database connection test
-  .get("/db-test", async () => {
-    try {
-      const result = await db.select().from(users).limit(1);
-      return {
-        status: "connected",
-        message: "✅ Database connection is working",
-        database: "PostgreSQL",
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error("Database connection error:", error);
-      return {
-        status: "disconnected",
-        message: "❌ Database connection failed",
-        error: (error as Error).message,
-        timestamp: new Date().toISOString(),
-      };
-    }
-  })
-  // Auth Routes
-  .post(
-    "/auth/register",
-    async ({ body, jwt: jwtPlugin }) => {
-      try {
-        const { email, password, name } = body as {
-          email: string;
-          password: string;
-          name: string;
-        };
+  .use(authController)
+  .use(usersController)
+  .use(categoriesController)
+  .use(tagsController)
+  .use(postsController)
+  .use(commentsController)
+  .listen(PORT);
 
-        // Check if user exists
-        const existingUser = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, email))
-          .limit(1);
-
-        if (existingUser.length > 0) {
-          return {
-            error: "User already exists",
-            status: 400,
-          };
-        }
-
-        // Hash password
-        const hashedPassword = await hashPassword(password);
-
-        // Create user
-        const newUser = await db
-          .insert(users)
-          .values({
-            email,
-            name,
-            password: hashedPassword,
-            createdAt: new Date(),
-          })
-          .returning({ id: users.id, email: users.email, name: users.name });
-
-        // Generate token
-        const token = await jwtPlugin.sign({
-          id: newUser[0].id,
-          email: newUser[0].email,
-        });
-
-        return {
-          message: "User registered successfully",
-          token,
-          user: newUser[0],
-        };
-      } catch (error) {
-        console.error("Registration error:", error);
-        return {
-          error: "Registration failed",
-          status: 500,
-        };
-      }
-    },
-    {
-      body: t.Object({
-        email: t.String({ format: "email" }),
-        password: t.String({ minLength: 6 }),
-        name: t.String(),
-      }),
-    }
-  )
-  .post(
-    "/auth/login",
-    async ({ body, jwt: jwtPlugin }) => {
-      try {
-        const { email, password } = body as {
-          email: string;
-          password: string;
-        };
-
-        // Find user
-        const user = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, email))
-          .limit(1);
-
-        if (user.length === 0) {
-          return {
-            error: "Invalid credentials",
-            status: 401,
-          };
-        }
-
-        // Verify password
-        const isPasswordValid = await verifyPassword(
-          password,
-          user[0].password
-        );
-
-        if (!isPasswordValid) {
-          return {
-            error: "Invalid credentials",
-            status: 401,
-          };
-        }
-
-        // Generate token
-        const token = await jwtPlugin.sign({
-          id: user[0].id,
-          email: user[0].email,
-        });
-
-        return {
-          message: "Login successful",
-          token,
-          user: {
-            id: user[0].id,
-            email: user[0].email,
-            name: user[0].name,
-          },
-        };
-      } catch (error) {
-        console.error("Login error:", error);
-        return {
-          error: "Login failed",
-          status: 500,
-        };
-      }
-    },
-    {
-      body: t.Object({
-        email: t.String({ format: "email" }),
-        password: t.String(),
-      }),
-    }
-  )
-  .get("/user/profile", async ({ jwt: jwtPlugin, headers }) => {
-    try {
-      // Get token from headers
-      const token = headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        return {
-          error: "No token provided",
-          status: 401,
-        };
-      }
-
-      // Verify token
-      const payload = await jwtPlugin.verify(token);
-      if (!payload) {
-        return {
-          error: "Invalid token",
-          status: 401,
-        };
-      }
-
-      // Get user
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, payload.id as string))
-        .limit(1);
-
-      if (user.length === 0) {
-        return {
-          error: "User not found",
-          status: 404,
-        };
-      }
-
-      return {
-        user: {
-          id: user[0].id,
-          email: user[0].email,
-          name: user[0].name,
-        },
-      };
-    } catch (error) {
-      console.error("Profile error:", error);
-      return {
-        error: "Failed to fetch profile",
-        status: 500,
-      };
-    }
-  });
-
-// Graceful shutdown
-const gracefulShutdown = async () => {
-  console.log("\n🛑 Shutting down gracefully...");
-  process.exit(0);
-};
-
-process.on("SIGINT", gracefulShutdown);
-process.on("SIGTERM", gracefulShutdown);
-
-// Start server
-const port = parseInt(process.env.PORT || "3000");
-app.listen(port, () => {
-  console.log(`
-   🚀 Blog API Server Started
-  📍 http://localhost:${port}
-    📚 Docs: http://localhost:${port}/swagger
-  `);
-});
+console.log(`🚀 Elysia server running at http://localhost:${app.server?.port}`);
+console.log(`📚 Swagger docs available at http://localhost:${app.server?.port}/docs`);

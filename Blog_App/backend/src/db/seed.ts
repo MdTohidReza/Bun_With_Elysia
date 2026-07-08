@@ -1,4 +1,4 @@
-import {db} from "./index"
+import {db, client} from "./index"
 import{users,profiles,categories,posts,tags,postsToTags,comments} from "./schema"
 import {hashPassword} from "../lib/auth"
 
@@ -31,8 +31,8 @@ async function seed (){
     // Profiles 1:1
     await db.insert(profiles).values(
         [
-            {userId:admin.id,bio:"I am the Admin user", avatarUrl:"", phone:9876543219},
-            {userId:john.id,bio:"I am john Doe", avatarUrl:"", phone:9876543210}
+            {userId:admin.id,bio:"I am the Admin user", avatarUrl:"", phone:"9876543219"},
+            {userId:john.id,bio:"I am john Doe", avatarUrl:"", phone:"9876543210"}
         ]
     );
 
@@ -79,9 +79,11 @@ async function seed (){
     ]);
 
     console.log("seed completed.Login with admin@example.com/ Admin@123")
+    await client.end();
     process.exit(0);
 }
-seed().catch((err)=>{
+seed().catch(async (err)=>{
     console.error("Seed Failed",err);
+    await client.end();
     process.exit(1);
 })

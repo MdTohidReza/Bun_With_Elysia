@@ -1,6 +1,6 @@
 import {Elysia} from 'elysia';
 import {authPlugin, isAuthenticated} from '../../middleware/auth.middleware';
-import{registerBody, loginBody} from '../../auth/auth_schema';
+import{registerBody, loginBody} from './auth.models';
 import {AuthService} from './auth_service';
 
 export const authController = new Elysia ({prefix:'/auth', tags:['auth']})
@@ -30,7 +30,7 @@ export const authController = new Elysia ({prefix:'/auth', tags:['auth']})
 {body:registerBody}
 )
 
-//post /auth/login -> authenticate +return JWT
+//post /auth/login -> authenticate + return JWT
 .post('/login',
 async({body,jwt,cookie,set})=>{
     try{
@@ -62,8 +62,8 @@ async({body,jwt,cookie,set})=>{
 })
 
 //get /auth/me -> return currently logged-in user
-.guard({beforeHandle: isAuthenticated},(app)=>{
+.guard({beforeHandle: isAuthenticated},(app)=>
     app.get('/me',({user})=>{
         return {success:true, data:user}
     })
-})
+);
